@@ -1,4 +1,4 @@
-from conans import ConanFile, tools, AutoToolsBuildEnvironment, VisualStudioBuildEnvironment
+from conans import ConanFile, tools, AutoToolsBuildEnvironment, VisualStudioBuildEnvironment, RunEnvironment
 from contextlib import contextmanager
 import glob
 import os
@@ -159,34 +159,35 @@ class Libxml2Conan(ConanFile):
     def _configure_autotools(self):
         if self._autotools:
             return self._autotools
-        self._autotools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-        if not tools.os_info.is_windows:
-            self._autotools.fpic = self.options.fPIC
-        full_install_subfolder = tools.unix_path(self.package_folder) if tools.os_info.is_windows else self.package_folder
-        # fix rpath
-        if self.settings.os == "Macos":
-            tools.replace_in_file(os.path.join(self._source_subfolder, "configure"), r"-install_name \$rpath/", "-install_name ")
-        configure_args = ['--prefix=%s' % full_install_subfolder]
-        if self._autotools.fpic:
-            configure_args.extend(['--with-pic'])
-        if self.options.shared:
-            configure_args.extend(['--enable-shared', '--disable-static'])
-        else:
-            configure_args.extend(['--enable-static', '--disable-shared'])
+        with tools.environment_append(RunEnvironment(self).vars):
+            self._autotools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
+            if not tools.os_info.is_windows:
+                self._autotools.fpic = self.options.fPIC
+            full_install_subfolder = tools.unix_path(self.package_folder) if tools.os_info.is_windows else self.package_folder
+            # fix rpath
+            if self.settings.os == "Macos":
+                tools.replace_in_file(os.path.join(self._source_subfolder, "configure"), r"-install_name \$rpath/", "-install_name ")
+            configure_args = ['--prefix=%s' % full_install_subfolder]
+            if self._autotools.fpic:
+                configure_args.extend(['--with-pic'])
+            if self.options.shared:
+                configure_args.extend(['--enable-shared', '--disable-static'])
+            else:
+                configure_args.extend(['--enable-static', '--disable-shared'])
 
-        for name in self._option_names:
-            value = getattr(self.options, name)
-            value = ("--with-%s" % name) if value else ("--without-%s" % name)
-            configure_args.append(value)
+            for name in self._option_names:
+                value = getattr(self.options, name)
+                value = ("--with-%s" % name) if value else ("--without-%s" % name)
+                configure_args.append(value)
 
-        # Disable --build when building for iPhoneSimulator. The configure script halts on
-        # not knowing if it should cross-compile.
-        build = None
-        if self.settings.os == "iOS" and self.settings.arch == "x86_64":
-            build = False
+            # Disable --build when building for iPhoneSimulator. The configure script halts on
+            # not knowing if it should cross-compile.
+            build = None
+            if self.settings.os == "iOS" and self.settings.arch == "x86_64":
+                build = False
 
-        self._autotools.configure(args=configure_args, build=build, configure_dir=self._source_subfolder)
-        return self._autotools
+            self._autotools.configure(args=configure_args, build=build, configure_dir=self._source_subfolder)
+            return self._autotools
 
     def _patch_sources(self):
         # Break dependency of install on build
